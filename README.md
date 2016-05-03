@@ -3,9 +3,7 @@
 
 
 
-![feifan](http://img1.gtimg.com/bengbuhouse/pics/hv1/52/215/120/7857877.png)
 
-#飞凡app工程使用规范（未完,欢迎继续补充）
 
 ## app唤起功能使用
 
