@@ -1,114 +1,122 @@
-# jinlingyun.github.io
-技术的博客组
+#使用cocoapods拆分子工程
 
+* 1.新建project，命名为FFPark，并将其拷贝到主工程中
+* 2.子工程中新建pch文件，命名为FFParkPrefixHeader.pch，并将其加入系统pch配置中：
+进入子工程配置文件中，Build Settings，搜索header，在precompile prefix header中设置为yes，prefix header中设置为FFPark/FFParkPrefixHeader.pch。如图：
+![markdown](http://7xsxl2.com2.z0.glb.clouddn.com/prefixHeader.png)
+* 3.子工程中根目录新建FFPark.podspec文件，内容如下：
+```javascript
+Pod::Spec.new do |s|
+  s.name     = 'FFPark'
+  s.version  = '1.0'
+  s.license  = 'WD'
+  s.author   = { "jinlingyun"=> "jinlingyun@wanda.cn" }
+  s.requires_arc = true
+  s.platform     = :ios, '7.0'
+  s.source_files = ['FFPark/**/*.{h,m}']
+  s.resources = ["FFPark/**/*.plist","FFPark/**/*.png","FFPark/**/*.json","FFPark/**/*.xib","FFPark/**/*.storyboard"]
+  s.prefix_header_file = 'FFPark/FFParkPrefixHeader.pch'
 
+  s.frameworks  = 'QuartzCore'
 
+  s.dependency 'WDWorkFlow'
+  s.dependency 'FFFoundation'
+  s.dependency 'WDImageTools'
 
+end
+```
+* 4.主工程中修改Podfile文件，在主target中添加：
+```javascript
+pod ‘FFPark’, :path => './FFPark_src'
+```
+同时添加target :FFPark，如下：
+```javascript
+target :FFPark do
+    xcodeproj 'FFPark_src/FFPark'
+    link_with "FFPark"
+    pod 'WDWorkFlow', :path => './WDWorkFlow_src'
+    pod 'WDImageTools', :path => './WDImageTools'
+    pod 'FFFoundation', :path => './FFFoundation'
+end
+```
+* 5.运行update_pods命令：./update_pods
+该命令内容如下：
+```bash
+ps -ef | grep  "/Applications/Xcode.app/Contents/MacOS/Xcode" | grep -v grep | awk '{print $2}' | xargs kill -9
 
-## app唤起功能使用
+pod update --no-repo-update
 
-* 外部app唤起飞凡app
+ls | grep ".xcworkspace" | xargs open
+```
+运行之后，可以在Pods子工程中看到FFPark文件夹，该文件夹实际上是子工程FFPark的文件镜像或替身
 
-    * 具体的协议为`wandafeifanapp://`
-    
-* H5唤起内部跳转
+* 6.编译子工程
 
-    * 具体的协议为`wandaappfeifan://`
-    
-## webView使用方法
+子工程引用子工程的代码，直接import进来即可，主工程也可以引用子工程的代码
+但要子工程引用主工程的代码，则不行，但有两种方法，1使用桥，2使用运行时
 
-* 飞凡app加载H5页面
+1使用桥，如下示例
 
-    * 具体的代码如下：
-    
-    ```javascript
-    NSString *strUrl = [NSString stringWithFormat:@"wdpage://FFWebBrowserViewController?url=%@&nocache=1",[url.absoluteString urlencode]];
-    
-    NSURL *finalUrl = [NSURL URLWithString:strUrl];
-    
-    [[FFUrlSchemeManager sharedInstance] pushViewControllerWithControllerName:@"FFWebBrowserViewController" navigator:self.navigator Params:@{@"url":finalUrl}];
-    ```
-* 飞凡加载外部url
+要拆分的子工程中的代码：
+```objectivec
+RTLbsAnnotation *tapAnnotation = [[RTLbsAnnotation alloc] initWithMapPoint:CGPointMake([manager.fixMemberInfo.fixXCoordinate floatValue], [manager.fixMemberInfo.fixYCoordinate floatValue]) title:@"" iconImage:[UIImage imageNamed:@"car_carposition_icon"] floorID:floorIndex];
+```
+而RTLbsAnnotation.h是在主工程中定义的， #import “RTLbsAnnotation.h"提示找不到RTLbsAnnotation.h这个文件。此时需要在拆分的子工程中添加头文件如 FFParkInterBridge.h，在该头文件中定义：
+```objectivec
+interface RTLbsAnnotation : NSObject
+- (id) initWithMapPoint: (CGPoint) mapPoint title: (NSString *)title iconImage:(UIImage *) iconImage floorID:(NSString*)floor;
+end
+```
+相当于在主工程和子工程中搭了一座桥，此时注释掉 #import “RTLbsAnnotation.h”，则可以编译通过，运行时会自动找到主工程中的代码来运行
 
-    * 具体的代码如下：
-    
-    ```javascript
-    NSString* detailURL = [NSString stringWithFormat:@"http://feiyue.ffan.com/meiwen?referer=ffan_app"];
-    
-    NSString* strUrl = [NSString stringWithFormat:@"wdpage://FFWebBrowserViewController?url=%@&needBottomToolBar=1",[detailURL urlencode]];
-    
-    NSURL *url = [NSURL URLWithString:strUrl];
-    
-    [[FFUrlSchemeManager sharedInstance] pushViewControllerWithControllerName:@"FFWebBrowserViewController" navigator:self.navigator Params:@{@"url":url}];
-    ```
-    
-## url Scheme的使用
+2使用运行时，如下示例（该方法不推荐，没有经过严格测试，只是说明思路）：
 
-* 先要将viewController注册plist中，如下图所示：
+要拆分的子工程中的代码：
+```objectivec
+-(void)openWebViewWithURL:(NSString*) url urlSort:(NSString*)urlsort{
+    [FFAdvertisementSkipNewViewController nav2NextListViewController:self.controller urlSort:model.urlSort urlContent:model.urlContent];
+}
+```
+而FFAdvertisementSkipNewViewController是在主工程中定义的，则使用如下代码，也可保证编译及运行通过：
+```objectivec
+-(void)openWebViewWithURL:(NSString*) url urlSort:(NSString*)urlsort{
+    id vc =NSClassFromString(@"FFAdvertisementSkipNewViewController");
 
-    *  ![plist](http://7xsw5d.com1.z0.glb.clouddn.com/plist.jpg?imageView2/2/w/200)
-    
-    
-* 在plist中配置如下信息：
+    SEL selector = NSSelectorFromString(@"nav2NextListViewController:urlSort:urlContent:");
 
-    * ![plistName](http://7xsw5d.com1.z0.glb.clouddn.com/plistName.png?imageView2/2/w/600)
-    * `publicURL`为暴露给外部跳转用的url
-    * `tagName`需要与`publicURL`中的scheme保持一致
-    * `requiredParameters`为进入到该VC必传参数，由于是通过KVC直接复制，因此需要与VC中的属性名称保持一致
-    * `optionalParameters`为进入到该VC的可选参数，同上
-    
-    
-* 跳转到指定VC
- ![vc](http://7xsw5d.com1.z0.glb.clouddn.com/vc.png?imageView2/2/w/600)
-pushViewController
-![vcpresent](http://7xsw5d.com1.z0.glb.clouddn.com/vcpresent.png?imageView2/2/w/600)
- presentViewController
-   
-## 程序分支管理
+    [self performMethodWithTarget:vc selector:selector withObjects:@[self,urlsort,url]];
+}
 
-* 无论子工程还是主工程之后都只有3个分支，`master`，`release`，`develop`
-    
-    * `master`分支用于提交appStore完成之后的版本备份，禁止直接提交代码进入master分支，master分支的代码只能从`release`合并过来
-    
-    * `release`分支用于定版后提交appStore的最终版本，所有需要进版提交的代码必须合并进入到`release`才可以，其他分支一律不管。
-    
-    * `develop`分支作为日常打包分支，每次需求提测的包都通过`develop`分支发出，所以如果哪个需求需要提测了请自行合并到develop分支。
-    
-    * 其他需求均可以自己创建`feature`分支，自行开发，如要提测，则必须合并到`develop`分支
-    
-    
-* 工程代码提交
-    
-    * 所有工程代码提交至gerrit，经过审核后才能入库
-    
-    * 所有子工程通过`git submodule`方式管理，并通过gerrit控制不同权限
-    
-    * 主工程内的所有子工程都指向的是`head`，在gerrit内将`head`配置为`develop`，即主工程默认指向所有子工程的`develop`分支
-    
-    * 子工程内有修改，`子工程代码提交`
-    
-        * `cd 到子工程目录下`，由于主工程中，默认指向子工程的`head`，但`head`只是`develop`的一个copy，只是一个临时分支，因此需要`checkout`到需要修改的分支再修改
-        
-        * 执行提交之前拉取最新代码,解决冲突，并编译通过后再push，避免其他人拉取代码后编译不过
-        
-    * 主工程内有修改，`主工程代码提交`
-    
-        * 如果涉及到子工程的修改，则必须先提交子工程的修改，步骤同上
-        
-        * 主工程修改，在提交代码之前先执行`git submodule update`，将子工程的代码同步到`develop`的最新代码，主要是由于本地的子工程代码refs指向可能和远端不同步，如果直接提交会造成主工程内的子工程refs覆盖，导致主工程base错的子工程代码
-        
-        * 之后拉取主工程最新代码，解决冲突后，再提交
-        
-* 工程打包
-    
-    * 先将主工程`checkout`到指定分支，`git checkout develop`
-    
-    * 拉取最新代码,`git pull --rebase`
-    
-    * 再将所有子工程`checkout`指定分支，`git submodule foreach git checkout develop`
-    
-    * 所有子工程拉取最新代码，`git submodule foreach git pull --rebase`
-    
-    * 确保所有工程为最新代码之后即可开始打包
+- (void)performMethodWithTarget:(id)target selector:(SEL)selector withObjects:(NSArray *)objects
+{
+    // 方法签名(方法的描述)
+    NSMethodSignature *signature = [target methodSignatureForSelector:selector];
+    if (signature == nil) {
+        return;
+        //可以抛出异常也可以不操作。
+    }
+
+    // NSInvocation : 利用一个NSInvocation对象包装一次方法调用（方法调用者、方法名、方法参数、方法返回值）
+    NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+    invocation.target = target;
+    invocation.selector = selector;
+
+    // 设置参数
+    NSInteger paramsCount = signature.numberOfArguments - 2; // 除self、_cmd以外的参数个数
+    if(paramsCount!=objects.count)
+    {
+        return;
+    }
+    for (NSInteger i = 0; i < paramsCount; i++) {
+        id object = objects[i];
+        if ([object isKindOfClass:[NSNull class]]) continue;
+        [invocation setArgument:&object atIndex:i + 2];
+    }
+
+    // 调用方法
+    [invocation invoke];
+}
+```
+7.待拆分子工程编译通过后，删除主工程中该模块的代码，再编译主工程
 
 
